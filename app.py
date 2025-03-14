@@ -3,30 +3,42 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from models.order import Order
-from schemas.user import UserCreate, UserResponse
+from schemas.user import UserCreate, UserResponse, UserCreateResponse
 from schemas.order import OrderCreate, OrderResponse
 from typing import List
 import uvicorn
+from fastapi import Header
 
 app = FastAPI()
 
-@app.post("/create_user", response_model=UserCreate)
+def get_current_user(api_token: str = Header(None), db: Session = Depends(get_db)):
+    if not api_token:
+        raise HTTPException(status_code=401, detail="Missing API Token")
+
+    user = db.query(User).filter(User.api_token == api_token).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid API Token")
+
+    return user
+
+@app.post("/create_user", response_model=UserCreateResponse)
 def create_user(user: UserCreate, database: Session = Depends(get_db)):
     db_user = User(name=user.name, email=user.email)
+    db_user.generate_api_token()
     database.add(db_user)
     database.commit()
     database.refresh(db_user)
     return db_user
 
 @app.get("/user/{user_id}", response_model=UserResponse)
-def get_user(user_id: int, database: Session = Depends(get_db)):
+def get_user(user_id: int, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     user = database.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
 @app.post("/create_order", response_model=OrderResponse)
-def create_order(order: OrderCreate, database: Session = Depends(get_db)):
+def create_order(order: OrderCreate, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     user = database.query(User).filter(User.id == order.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -51,14 +63,14 @@ def create_order(order: OrderCreate, database: Session = Depends(get_db)):
     return db_order
 
 @app.get("/user/{user_id}/orders", response_model=List[OrderResponse])
-def get_user_orders(user_id: int, database: Session = Depends(get_db)):
+def get_user_orders(user_id: int, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     orders = database.query(Order).filter(Order.user_id == user_id).all()
     if not orders:
         raise HTTPException(status_code=404, detail="No orders found for this user")
     return orders
 
 @app.get("/order/{order_id}", response_model=OrderResponse)
-def get_order(order_id: int, database: Session = Depends(get_db)):
+def get_order(order_id: int, database: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     order = database.query(Order).filter(Order.order_id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")

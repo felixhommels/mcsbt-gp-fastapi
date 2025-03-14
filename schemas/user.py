@@ -17,3 +17,10 @@ class UserResponse(UserBase):
 
     class Config:
         orm_mode = True
+
+class UserCreateResponse(UserBase):
+    id: int
+    api_token: str
+
+    class Config:
+        orm_mode = True
